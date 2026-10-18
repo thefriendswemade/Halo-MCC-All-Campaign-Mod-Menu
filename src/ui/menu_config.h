@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 // The mod menu's own settings (look, size, position, button bindings).
 // Shared by every game; saved in the [Mod Menu] section of HaloModMenu.ini.
@@ -60,6 +61,9 @@ namespace Menu {
         float fontSize = 13.0f;
         bool showHud = true;     // active-cheat list
         bool showBanner = true;  // "loaded" banner at startup
+        bool killstreakMode = false;  // D-pad down arms the pinned-action list (D-pad down is then hidden from the game)
+        int streakRows = 3;      // icons shown in the killstreak list: 3 or 5
+        std::map<std::string, std::vector<std::string>> streaks;  // per title: pinned action ids, in pin order
     };
 
     Config Defaults();

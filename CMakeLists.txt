@@ -36,6 +36,7 @@ add_library(HaloModMenu SHARED
     src/games/halo2/tags.cpp
     src/games/halo3/cheats.cpp
     src/games/halo3/ai_upgrade.cpp
+    src/games/halo3/bombing_run.cpp
     src/games/halo3/checkpoints.cpp
     src/games/halo3/equipment.cpp
     src/games/halo3/extras.cpp
@@ -70,11 +71,13 @@ add_library(HaloModMenu SHARED
     src/games/odst/main_thread.cpp
     src/games/odst/spawn.cpp
     src/games/odst/tags.cpp
+    src/games/reach/boundary_view.cpp
     src/games/reach/cheats.cpp
     src/games/reach/main_thread.cpp
     src/games/reach/reach.cpp
     src/games/reach/tags.cpp
     src/ui/gamepad.cpp
+    src/ui/icon_font.cpp
     src/ui/overlay.cpp
     src/ui/settings_file.cpp
     src/ui/menu_config.cpp

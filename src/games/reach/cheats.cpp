@@ -1204,6 +1204,17 @@ bool ReachCheats::Apply(void** gameState, const Games::Settings& settings, Games
     Guard("skulls", [&] { status.skullsActive = Field<uint64_t>(f.gameGlobals, REACH_GAME_GLOBALS_SKULLS); });
 
     Guard("tag lists", [&] { RefreshLists(f.scnr); });
+    Guard("boundary view", [&] {
+        static Games::BoundaryView view;
+        if (!settings.showBoundaries && !settings.showSoftCeilings) { status.boundaryView = nullptr; return; }
+        int kills = 0;
+        if (f.scnr) {
+            auto* count = &Field<int32_t>(f.scnr, REACH_SCNR_KILL_TRIGGERS);
+            kills = g_killTriggerCount.Ours(count) ? g_killTriggerCount.original : *count;
+        }
+        BoundaryFill(gameState, f.scnr, kills, settings, view);
+        status.boundaryView = view.valid ? &view : nullptr;
+    });
     status.weapons = &g_weapons;
     status.equipment = &g_equipment;
     g_checkpointStatus.clear();

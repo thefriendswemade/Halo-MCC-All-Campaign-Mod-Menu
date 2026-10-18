@@ -170,9 +170,16 @@ namespace Menu {
         out += "teleportPad=" + BindingText(c.teleportPad) + "\n";
         for (auto& game : c.teleportPadByGame) out += "teleportPad." + game.first + "=" + BindingText(game.second) + "\n";
         out += "teleportKey=" + BindingText(c.teleportKey) + "\n";
-        sprintf_s(buf, "width=%.0f\nmaxHeight=%.0f\nposX=%.0f\nposY=%.0f\nfont=%d\nfontSize=%.0f\nshowHud=%d\nshowBanner=%d\n",
-                  c.width, c.maxHeight, c.posX, c.posY, c.font, c.fontSize, c.showHud ? 1 : 0, c.showBanner ? 1 : 0);
+        sprintf_s(buf, "width=%.0f\nmaxHeight=%.0f\nposX=%.0f\nposY=%.0f\nfont=%d\nfontSize=%.0f\nshowHud=%d\nshowBanner=%d\nkillstreakMode=%d\nstreakRows=%d\n",
+                  c.width, c.maxHeight, c.posX, c.posY, c.font, c.fontSize, c.showHud ? 1 : 0, c.showBanner ? 1 : 0,
+                  c.killstreakMode ? 1 : 0, c.streakRows);
         out += buf;
+        for (auto& game : c.streaks) {
+            if (game.second.empty()) continue;
+            out += "streaks." + game.first + "=";
+            for (size_t i = 0; i < game.second.size(); ++i) out += (i ? "," : "") + game.second[i];
+            out += "\n";
+        }
         return out;
     }
 
@@ -212,6 +219,21 @@ namespace Menu {
             else if (k == "fontSize") c.fontSize = (float)atof(v);
             else if (k == "showHud") c.showHud = atoi(v) != 0;
             else if (k == "showBanner") c.showBanner = atoi(v) != 0;
+            else if (k == "killstreakMode") c.killstreakMode = atoi(v) != 0;
+            else if (k == "streakRows") c.streakRows = atoi(v) == 5 ? 5 : 3;
+            else if (k.rfind("streaks.", 0) == 0) {
+                auto& ids = c.streaks[k.substr(8)];
+                ids.clear();
+                std::string list = v;
+                while (!list.empty() && (list.back() == '\r' || list.back() == ' ')) list.pop_back();
+                size_t at = 0;
+                while (at < list.size()) {
+                    size_t comma = list.find(',', at);
+                    std::string id = list.substr(at, comma == std::string::npos ? std::string::npos : comma - at);
+                    if (!id.empty()) ids.push_back(id);
+                    at = comma == std::string::npos ? list.size() : comma + 1;
+                }
+            }
         }
         // The first spawn default (Back + D-pad up, 2026-10-02) became Back + D-pad down.
         if (c.spawnPad == Chord({PadBit(XINPUT_GAMEPAD_BACK), PadBit(XINPUT_GAMEPAD_DPAD_UP)}))

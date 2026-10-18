@@ -1,0 +1,8 @@
+Killstreak icons are from Game-icons.net (https://game-icons.net), licensed CC BY 3.0
+(https://creativecommons.org/licenses/by/3.0/). Modified: recoloured, combined and packed into a font.
+
+Authors of the icons used:
+  Lorc            mushroom-cloud, ghost, cycle, grenade, bombing-run, teleport
+  Delapouite      perspective-dice-six-faces-random, flag-objective, backward-time, jeep, backpack, plane-pilot
+  Skoll           rank-3, winchester-rifle
+  (badges)        arrow-up

@@ -40,4 +40,7 @@ namespace ReachTags {
     // Element `index` of a tag block at `tag + blockOffset`, or nullptr.
     char* BlockElement(char* tag, int blockOffset, int elementSize, int index);
     int BlockCount(char* tag, int blockOffset);
+    // The first element of a block whatever its count says (a block the mod
+    // zeroed to disable it still has its data), or nullptr.
+    char* BlockData(char* tag, int blockOffset);
 }

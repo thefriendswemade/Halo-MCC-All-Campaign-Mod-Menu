@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <d3d11.h>
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
@@ -20,6 +21,7 @@
 #include "games/games.h"
 #include "games/squads.h"
 #include "gamepad.h"
+#include "icon_codes.h"
 #include "menu_config.h"
 #include "settings_file.h"
 #include "mcc/coop.h"
@@ -66,6 +68,87 @@ static void Toast(const std::string& text) {
 static Menu::Config g_menu = Menu::Defaults();  // the menu's own settings (all games)
 static bool g_styleDirty = true;               // re-apply colours before the next frame
 static bool g_fontDirty = true;                // rebuild the font before the next frame
+
+// --- Killstreaks ------------------------------------------------------------
+// One-shot actions (the menu's buttons and the key-bound ones) that can be
+// pinned to a list and fired from the D-pad. Firing one bumps the same counter
+// its menu button does.
+
+struct Streak {
+    const char* id;  // saved in the ini; never rename
+    const char* label;
+    uint32_t Games::Settings::*serial;
+    int word;          // which feature word the title must support: 0 = features, 1 = features2, -1 = any
+    uint64_t feature;
+    bool (*usable)();  // optional extra condition (the option the action depends on is set up)
+};
+
+static const Streak kStreaks[] = {
+    {"nuke", "Nuke (kill every AI)", &Games::Settings::nukeSerial, 0, Games::kNuke, nullptr},
+    {"upgradeAi", "Upgrade AI now (one rank)", &Games::Settings::upgradeAiSerial, 0, Games::kUpgradeAi, nullptr},
+    {"despawnAi", "Despawn all custom AI", &Games::Settings::despawnSerial, 0, Games::kDespawnAi, nullptr},
+    {"randomTeams", "Randomize AI teams now", &Games::Settings::randomTeamsSerial, 0, Games::kRandomTeams, nullptr},
+    {"randomSwap", "Swap all AI now", &Games::Settings::randomSwapSerial, 1, Games::kRandomSwap, nullptr},
+    {"grenades", "Drop a grenade under every AI", &Games::Settings::grenadeSerial, 1, Games::kGrenadeDrop, nullptr},
+    {"bombingRun", "Call in a bombing run", &Games::Settings::bombingRunSerial, 1, Games::kBombingRun, nullptr},
+    {"saveCheckpoint", "Save checkpoint", &Games::Settings::saveCheckpointSerial, 0, Games::kCheckpoints, nullptr},
+    {"loadCheckpoint", "Load checkpoint", &Games::Settings::loadCheckpointSerial, 0, Games::kCheckpoints, nullptr},
+    {"upgradeVehicle", "Upgrade vehicle", &Games::Settings::upgradeVehicleSerial, 0, Games::kUpgradeVehicle, nullptr},
+    {"giveWeapon", "Give weapon again", &Games::Settings::giveWeaponSerial, 0, Games::kGiveWeapon,
+     [] { return g_settings.giveWeapon != 0xFFFFFFFF; }},
+    {"giveEquipment", "Give equipment again", &Games::Settings::giveEquipmentSerial, 0, Games::kGiveEquipment,
+     [] { return g_settings.giveEquipment != 0xFFFFFFFF; }},
+    {"spawn", "Spawn selection", &Games::Settings::spawnSerial, -1, 0, [] { return g_settings.spawnEnabled; }},
+    {"takeSeat", "Take pilot seat", &Games::Settings::takeSeatSerial, -1, 0, [] { return g_settings.pilotAiVehicles; }},
+    {"teleport", "Teleport where you aim", &Games::Settings::teleportSerial, -1, 0,
+     [] { return g_settings.teleportEnabled; }},
+};
+
+static ImFont* g_iconSmall = nullptr;  // the icon font (ui/icon_font.cpp), set by RebuildFont
+static ImFont* g_iconLarge = nullptr;
+
+static const char* IconUtf8(const char* id) {
+    for (const IconCode& code : kIconCodes)
+        if (!strcmp(code.id, id)) return code.utf8;
+    return nullptr;
+}
+
+static uint64_t g_features[2] = {};  // what the running title supports, as of this frame
+static bool g_armed = false;         // killstreak list armed: the D-pad belongs to the mod
+static int g_streakSel = 0;
+
+static std::vector<std::string>& PinnedIds(const char* title) { return g_menu.streaks[title ? title : ""]; }
+
+static const Streak* FindStreak(const std::string& id) {
+    for (const Streak& st : kStreaks)
+        if (id == st.id) return &st;
+    return nullptr;
+}
+
+static bool StreakAvailable(const Streak& st) {
+    if (st.word >= 0 && !(g_features[st.word] & st.feature)) return false;
+    return !st.usable || st.usable();
+}
+
+// The pinned actions that work right now, in pin order.
+static std::vector<const Streak*> ActiveStreaks(const char* title) {
+    std::vector<const Streak*> list;
+    for (const std::string& id : PinnedIds(title)) {
+        const Streak* st = FindStreak(id);
+        if (st && StreakAvailable(*st)) list.push_back(st);
+    }
+    return list;
+}
+
+static void FireStreak(const Streak& st) {
+    if (!strcmp(st.id, "spawn") && g_settings.spawnTag == 0xFFFFFFFF && g_settings.spawnSquad < 0) {
+        Toast("Spawning: nothing selected");
+        return;
+    }
+    ++(g_settings.*st.serial);
+    LOG("Killstreak: %s", st.id);
+    if (strcmp(st.id, "spawn")) Toast(st.label);  // spawning reports its own result
+}
 
 // --- Input ----------------------------------------------------------------
 
@@ -227,12 +310,17 @@ static void UpdateMenuInput(bool inGame, bool lite, const char* title) {
     UpdateCapture();
     if (g_waitForRelease && !g_capture.target && !Gamepad::AnyHeld() && !AnyKeyDown()) g_waitForRelease = false;
     bool busy = g_capture.target || g_waitForRelease;
+    // The tap that arms the killstreak list (D-pad down; Back + down stays a chord for the key-bound actions).
+    bool arming = g_menu.killstreakMode && inGame && !lite && !g_armed && Gamepad::Pressed(XINPUT_GAMEPAD_DPAD_DOWN) &&
+                  !Gamepad::Held(XINPUT_GAMEPAD_BACK);
 
     if (!g_showMenu) {
         if (!busy && (inGame || lite) && (ChordPressed(g_menu.openPad) || ChordPressed(g_menu.openKey)))
             SetMenuOpen(true, lite);
         // Spawning: the spawn key creates the selection where you're aiming.
-        else if (!busy && inGame && g_settings.spawnEnabled &&
+        // While the killstreak list is armed the D-pad is its own, so the key-bound actions below are off
+        // (they can still be pinned and fired from the list).
+        else if (!busy && !g_armed && !arming && inGame && g_settings.spawnEnabled &&
                  (ChordPressed(Menu::SpawnPad(g_menu, title)) || ChordPressed(g_menu.spawnKey))) {
             if (g_settings.spawnTag == 0xFFFFFFFF && g_settings.spawnSquad < 0) {
                 Toast("Spawning: nothing selected");
@@ -242,13 +330,13 @@ static void UpdateMenuInput(bool inGame, bool lite, const char* title) {
             }
         }
         // Take the pilot seat of the AI-only aircraft you're aiming at.
-        else if (!busy && inGame && g_settings.pilotAiVehicles &&
+        else if (!busy && !g_armed && !arming && inGame && g_settings.pilotAiVehicles &&
                  (ChordPressed(g_menu.takeSeatPad) || ChordPressed(g_menu.takeSeatKey))) {
             ++g_settings.takeSeatSerial;
             LOG("Take-pilot-seat key pressed");
         }
         // Teleport where you're aiming (Fun page).
-        else if (!busy && inGame && g_settings.teleportEnabled &&
+        else if (!busy && !g_armed && !arming && inGame && g_settings.teleportEnabled &&
                  (ChordPressed(Menu::TeleportPad(g_menu, title)) || ChordPressed(g_menu.teleportKey))) {
             ++g_settings.teleportSerial;
             LOG("Teleport key pressed");
@@ -260,6 +348,35 @@ static void UpdateMenuInput(bool inGame, bool lite, const char* title) {
 
     if (g_blockUntilReleased && !Gamepad::AnyHeld() && !MouseButtonHeld())
         g_blockUntilReleased = false;
+
+    // Killstreak mode: D-pad down always goes to the mod (no title uses it); armed, the whole D-pad does.
+    // The game never sees these, so the arming tap can't do anything in the game.
+    bool streaks = g_menu.killstreakMode && inGame && !lite && !g_showMenu;
+    if (!streaks) g_armed = false;
+    else if (!busy) {
+        if (!g_armed) {
+            if (arming) {
+                g_armed = true;
+                LOG("Killstreaks armed");
+            }
+        } else if (Gamepad::Pressed(XINPUT_GAMEPAD_DPAD_LEFT)) {
+            g_armed = false;
+            LOG("Killstreaks disarmed");
+        } else {
+            std::vector<const Streak*> list = ActiveStreaks(title);
+            int n = (int)list.size();
+            if (n) {
+                g_streakSel = g_streakSel < 0 || g_streakSel >= n ? 0 : g_streakSel;
+                if (Gamepad::Pressed(XINPUT_GAMEPAD_DPAD_UP)) g_streakSel = (g_streakSel + n - 1) % n;
+                if (Gamepad::Pressed(XINPUT_GAMEPAD_DPAD_DOWN)) g_streakSel = (g_streakSel + 1) % n;
+                if (Gamepad::Pressed(XINPUT_GAMEPAD_DPAD_RIGHT)) FireStreak(*list[g_streakSel]);
+            }
+        }
+    }
+    MCC::SetDpadMask(!streaks ? 0
+                     : g_armed ? (XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN | XINPUT_GAMEPAD_DPAD_LEFT |
+                                  XINPUT_GAMEPAD_DPAD_RIGHT)
+                               : XINPUT_GAMEPAD_DPAD_DOWN);
 
     MCC::SetInputBlocked(g_showMenu || g_blockUntilReleased);
     // On MCC's own screens the game manager isn't what reads the controller.
@@ -286,6 +403,24 @@ static bool WrappedCheckbox(const char* label, bool* value) {
         changed = true;
     }
     return changed;
+}
+
+// Killstreak mode: a "Pin" checkbox for a one-shot action. Pinned actions
+// join the title's list in the order they're pinned. `sameLine` puts it beside
+// the button just drawn; otherwise it's a row of its own.
+static void PinBox(const char* id, const Games::Status& s, bool sameLine = true) {
+    if (!g_menu.killstreakMode) return;
+    std::vector<std::string>& ids = PinnedIds(s.title);
+    auto it = std::find(ids.begin(), ids.end(), id);
+    bool pinned = it != ids.end();
+    if (sameLine) ImGui::SameLine();
+    ImGui::PushID(id);
+    if (WrappedCheckbox("Pin to killstreaks", &pinned)) {
+        if (pinned) ids.push_back(id);
+        else ids.erase(std::remove(ids.begin(), ids.end(), std::string(id)), ids.end());
+        LOG("Killstreak %s %s", id, pinned ? "pinned" : "unpinned");
+    }
+    ImGui::PopID();
 }
 
 // One row per cheat. Greyed out when the running title doesn't support it.
@@ -495,6 +630,7 @@ static void DrawWeaponsPage(Games::Settings& c, const Games::Status& s) {
     ImGui::BeginDisabled(c.giveWeapon == 0xFFFFFFFF || (s.title && !(s.features & Games::kGiveWeapon)));
     if (ImGui::Button("Give again")) ++c.giveWeaponSerial;
     ImGui::EndDisabled();
+    PinBox("giveWeapon", s);
 
     ImGui::SeparatorText("Ammo");
     Toggle("Infinite ammo", &c.infiniteAmmo, Games::kInfiniteAmmo, s);
@@ -543,6 +679,7 @@ static void DrawEquipmentPage(Games::Settings& c, const Games::Status& s) {
     ImGui::BeginDisabled(c.giveEquipment == 0xFFFFFFFF || (s.title && !(s.features & Games::kGiveEquipment)));
     if (ImGui::Button("Give equipment again")) ++c.giveEquipmentSerial;
     ImGui::EndDisabled();
+    PinBox("giveEquipment", s);
 
     ImGui::SeparatorText("Equipment");
     Toggle("Infinite equipment / armor ability", &c.infiniteEquipment, Games::kInfiniteEquipment, s);
@@ -586,6 +723,9 @@ static void DrawVehiclesPage(Games::Settings& c, const Games::Status& s) {
     ImGui::BeginDisabled(s.title && !(s.features & Games::kUpgradeVehicle));
     if (ImGui::Button("Upgrade vehicle (Falcon > Pelican, Banshee > Phantom)")) ++c.upgradeVehicleSerial;
     ImGui::EndDisabled();
+    PinBox("upgradeVehicle", s);
+    // Take pilot seat is bound to a key rather than a button, so it gets a row of its own.
+    PinBox("takeSeat", s, false);
 }
 
 static void DrawAiPage(Games::Settings& c, const Games::Status& s) {
@@ -608,6 +748,7 @@ static void DrawAiPage(Games::Settings& c, const Games::Status& s) {
         LOG("Nuke pressed");
     }
     ImGui::EndDisabled();
+    PinBox("nuke", s);
     Toggle("Nuke spares your allies", &c.nukeSpareAllies, Games::kNuke, s);
 
     // Each AI becomes the next rank up (grunt > major > heavy > ultra > spec ops) where it stands, in
@@ -621,6 +762,7 @@ static void DrawAiPage(Games::Settings& c, const Games::Status& s) {
         LOG("Upgrade AI pressed");
     }
     ImGui::EndDisabled();
+    PinBox("upgradeAi", s);
     Toggle("Auto-upgrade AI as they appear", &c.upgradeAiAuto, upgrade ? Games::kUpgradeAi : 0, s);
     Toggle(NoAiSpartans(s) ? "Allies too (marines)" : "Allies too (troopers)", &c.upgradeAiAllies,
            s.upgradeAlliesApplicable ? Games::kUpgradeAi : 0, s);
@@ -637,6 +779,29 @@ static void DrawWorldPage(Games::Settings& c, const Games::Status& s) {
 
     ImGui::SeparatorText("Level");
     Toggle("Remove boundaries (experimental)", &c.noBoundaries, Games::kNoBoundaries, s);
+
+    ImGui::SeparatorText("Show boundaries");
+    Toggle2("Draw kill volumes (wireframe)", &c.showBoundaries, Games::kBoundaryView, s);
+    Toggle2("Draw soft ceilings (invisible walls and ceilings)", &c.showSoftCeilings, Games::kBoundaryView, s);
+    Toggle2("Soft ceilings that don't affect you too (grey)", &c.softCeilingsAll, Games::kBoundaryView, s);
+    Toggle2("Hide boundaries behind walls and objects", &c.boundaryHide, Games::kBoundaryView, s);
+    ImGui::BeginDisabled(s.title && !(s.features2 & Games::kBoundaryView));
+    StepSlider("Boundary opacity", &c.boundaryOpacity, 0.05f, 0.8f, "%.2f", 0.05f);
+    {
+        // Steps: 2 4 6 8 10, then tens up to 200, then everywhere (stored as 0).
+        static const float kRanges[] = {2, 4, 6, 8, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 0};
+        constexpr int kCount = (int)(sizeof(kRanges) / sizeof(kRanges[0]));
+        float index = 4;
+        for (int i = 0; i < kCount; ++i)
+            if (kRanges[i] == c.boundaryRange) index = (float)i;
+        char text[32];
+        int shown = (int)index;
+        if (kRanges[shown] > 0) snprintf(text, sizeof(text), "%.0f units", kRanges[shown]);
+        else snprintf(text, sizeof(text), "everywhere");
+        if (StepSlider("Boundary range", &index, 0.0f, (float)(kCount - 1), text, 1.0f))
+            c.boundaryRange = kRanges[(int)(index + 0.5f)];
+    }
+    ImGui::EndDisabled();
 }
 
 static void DrawGameStatePage(Games::Settings& c, const Games::Status& s) {
@@ -647,12 +812,15 @@ static void DrawGameStatePage(Games::Settings& c, const Games::Status& s) {
         ++c.saveCheckpointSerial;
         LOG("Save checkpoint pressed");
     }
-    ImGui::SameLine();
+    ImGui::EndDisabled();
+    PinBox("saveCheckpoint", s);
+    ImGui::BeginDisabled(s.title && !(s.features & Games::kCheckpoints));
     if (ImGui::Button("Load checkpoint")) {
         ++c.loadCheckpointSerial;
         LOG("Load checkpoint pressed");
     }
     ImGui::EndDisabled();
+    PinBox("loadCheckpoint", s);
 
     ImGui::SeparatorText("Lock");
     Toggle("Lock checkpoints (the game saves no new ones)", &c.lockCheckpoints, Games::kCheckpointLock, s);
@@ -730,6 +898,7 @@ static void ApplyStyle() {
 static void RebuildFont() {
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
+    g_iconSmall = g_iconLarge = nullptr;
     ImFont* font = nullptr;
     const wchar_t* file = Menu::kFontFiles[g_menu.font];
     if (file) {
@@ -747,6 +916,13 @@ static void RebuildFont() {
         config.SizePixels = g_menu.fontSize;
         io.Fonts->AddFontDefault(&config);
     }
+
+    // The killstreak icons: two sizes of the embedded icon font (the list's icons and the selected one).
+    static const ImWchar iconRange[] = {kIconFirst, kIconLast, 0};
+    ImFontConfig iconConfig;
+    iconConfig.FontDataOwnedByAtlas = false;  // the bytes live in the DLL
+    g_iconSmall = io.Fonts->AddFontFromMemoryTTF((void*)kIconFontData, (int)kIconFontSize, 48.0f, &iconConfig, iconRange);
+    g_iconLarge = io.Fonts->AddFontFromMemoryTTF((void*)kIconFontData, (int)kIconFontSize, 96.0f, &iconConfig, iconRange);
     ImGui_ImplDX11_InvalidateDeviceObjects();
 }
 
@@ -871,6 +1047,7 @@ static void DrawSpawnControls(Games::Settings& c, const Games::Status& s) {
     if (keyCount == 0) keyCount = g_menu.spawnKey.count > 0 ? g_menu.spawnKey.count : 1;
     BindingRow("Spawn key (controller)", &pad, false, &padCount);
     BindingRow("Spawn key (keyboard)", &g_menu.spawnKey, true, &keyCount);
+    PinBox("spawn", s, false);
 
     ImGui::SeparatorText("Spawned AI");
     // Which side spawned AI fight for. The saved number is the same in every game
@@ -911,6 +1088,7 @@ static void DrawSpawnControls(Games::Settings& c, const Games::Status& s) {
         LOG("Despawn all custom AI pressed");
     }
     ImGui::EndDisabled();
+    PinBox("despawnAi", s);
 
     const char* name = SpawnName(s, c.spawnTag);
     char selection[128];
@@ -988,6 +1166,7 @@ static void DrawFunPage(Games::Settings& c, const Games::Status& s) {
     BindingRow("Teleport (controller)", &teleportPad, false, &padCount);
     BindingRow("Teleport (keyboard)", &g_menu.teleportKey, true, &keyCount);
     ImGui::EndDisabled();
+    PinBox("teleport", s, false);
 }
 
 static void DrawChaosPage(Games::Settings& c, const Games::Status& s) {
@@ -1028,6 +1207,7 @@ static void DrawChaosPage(Games::Settings& c, const Games::Status& s) {
         LOG("Randomize AI teams pressed");
     }
     ImGui::EndDisabled();
+    PinBox("randomTeams", s);
 
     // Each AI becomes a fresh one of a random character, where it stands, in its squad.
     ImGui::SeparatorText("Random AI swap");
@@ -1041,6 +1221,7 @@ static void DrawChaosPage(Games::Settings& c, const Games::Status& s) {
         LOG("Swap all AI pressed");
     }
     ImGui::EndDisabled();
+    PinBox("randomSwap", s);
 
     // A grenade at the feet of AI: all of them now, and/or each new one as it appears.
     if (s.features2 & Games::kGrenadeDrop) {
@@ -1049,8 +1230,33 @@ static void DrawChaosPage(Games::Settings& c, const Games::Status& s) {
             ++c.grenadeSerial;
             LOG("Drop grenades pressed");
         }
+        PinBox("grenades", s);
         Toggle2("Enemies only", &c.grenadeEnemiesOnly, Games::kGrenadeDrop, s);
         Toggle2("Do this to all new AI (the game's and your own)", &c.grenadeAuto, Games::kGrenadeDrop, s);
+    }
+
+    // Flying vehicles come in side by side and carpet the ground ahead with grenades.
+    if (s.features2 & Games::kBombingRun) {
+        ImGui::SeparatorText("Bombing run");
+        if (ImGui::Button("Call in a bombing run")) {
+            ++c.bombingRunSerial;
+            LOG("Bombing run pressed");
+        }
+        PinBox("bombingRun", s);
+        static const char* const kOrdnance[] = {"Marines (frag grenades)", "Covenant (plasma grenades)",
+                                                "Brutes (spike grenades)", "White phosphorus (firebombs)"};
+        int ordnance = c.bombingRunType >= 0 && c.bombingRunType < 4 ? c.bombingRunType : 0;
+        if (ImGui::BeginCombo("Ordnance", kOrdnance[ordnance])) {
+            for (int i = 0; i < 4; ++i)
+                if (ImGui::Selectable(kOrdnance[i], i == ordnance)) {
+                    c.bombingRunType = i;
+                    LOG("Bombing run ordnance -> %s", kOrdnance[i]);
+                }
+            ImGui::EndCombo();
+        }
+        float abreast = (float)c.bombingRunCount;
+        if (StepSlider("Aircraft abreast", &abreast, 1.0f, 12.0f, "%.0f", 1.0f)) c.bombingRunCount = (int)(abreast + 0.5f);
+        ImGui::TextDisabled("Starts a countdown, then they fly over the area ahead of you. Take cover.");
     }
 }
 
@@ -1157,6 +1363,11 @@ static void DrawCreditsPage() {
 
     ImGui::SeparatorText("Libraries");
     ImGui::TextWrapped("Dear ImGui (Omar Cornut), MinHook (Tsuda Kageyu), Assembly (XboxChaos) tag research.");
+
+    ImGui::SeparatorText("Killstreak icons");
+    ImGui::TextWrapped("Icons from Game-icons.net by Lorc, Delapouite and Skoll, licensed CC BY 3.0 (recoloured and "
+                       "combined).");
+    ImGui::TextDisabled("game-icons.net  |  creativecommons.org/licenses/by/3.0");
 }
 
 static void DrawMenuSettingsPage() {
@@ -1221,6 +1432,12 @@ static void DrawMenuSettingsPage() {
     ImGui::SeparatorText("Overlay");
     WrappedCheckbox("Show active-cheat list", &m.showHud);
     WrappedCheckbox("Show startup banner", &m.showBanner);
+
+    ImGui::SeparatorText("Killstreaks");
+    WrappedCheckbox("Killstreak mode (D-pad down arms it; D-pad down no longer reaches the game)", &m.killstreakMode);
+    char rows[48];
+    snprintf(rows, sizeof(rows), "Icons shown in the list: %d (click for %d)", m.streakRows, m.streakRows == 3 ? 5 : 3);
+    if (ImGui::Button(rows)) m.streakRows = m.streakRows == 3 ? 5 : 3;
 }
 
 // Puts one page's options back to their defaults (the main page's reset puts
@@ -1243,6 +1460,7 @@ static void ResetPage(Page page, Games::Settings& c, const char* title) {
             c.randomTeamsSerial = old.randomTeamsSerial;
             c.nukeSerial = old.nukeSerial;
             c.grenadeSerial = old.grenadeSerial;
+            c.bombingRunSerial = old.bombingRunSerial;
             c.despawnSerial = old.despawnSerial;
             c.saveCheckpointSerial = old.saveCheckpointSerial;
             c.loadCheckpointSerial = old.loadCheckpointSerial;
@@ -1308,6 +1526,7 @@ static void ResetPage(Page page, Games::Settings& c, const char* title) {
             c.randomSwapAuto = d.randomSwapAuto; c.randomSwapAllies = d.randomSwapAllies;
             c.randomTeamsFactions = d.randomTeamsFactions; c.randomTeamsRange = d.randomTeamsRange;
             c.grenadeEnemiesOnly = d.grenadeEnemiesOnly; c.grenadeAuto = d.grenadeAuto;
+            c.bombingRunCount = d.bombingRunCount; c.bombingRunType = d.bombingRunType;
             break;
         case Page::Skulls:
             c.skulls = d.skulls;
@@ -1461,9 +1680,91 @@ static void DrawDot(const Games::Status& s, ImDrawList* draw) {
     draw->AddCircleFilled(at, r, fill, 16);
 }
 
+// Boundary view: kill-volume wireframes and soft-ceiling triangles, projected
+// with the game's camera. Halo's axes: x forward, y left, z up.
+static void DrawBoundaries(const Games::Status& s, ImDrawList* draw) {
+    const Games::BoundaryView* v = s.boundaryView;
+    if (!v || !v->valid || !s.inGame || g_menuLite) return;
+    ImVec2 size = ImGui::GetIO().DisplaySize;
+    float scale = (size.y * 0.5f) / v->tanHalfV;  // pixels per unit of (sideways / depth)
+    float left[3] = {v->up[1] * v->fwd[2] - v->up[2] * v->fwd[1], v->up[2] * v->fwd[0] - v->up[0] * v->fwd[2],
+                     v->up[0] * v->fwd[1] - v->up[1] * v->fwd[0]};
+    // To camera space: (depth, left, up).
+    auto toCam = [&](const float* p, float* out) {
+        float d[3] = {p[0] - v->pos[0], p[1] - v->pos[1], p[2] - v->pos[2]};
+        out[0] = d[0] * v->fwd[0] + d[1] * v->fwd[1] + d[2] * v->fwd[2];
+        out[1] = d[0] * left[0] + d[1] * left[1] + d[2] * left[2];
+        out[2] = d[0] * v->up[0] + d[1] * v->up[1] + d[2] * v->up[2];
+    };
+    auto toScreen = [&](const float* c) { return ImVec2(size.x * 0.5f - c[1] / c[0] * scale, size.y * 0.5f - c[2] / c[0] * scale); };
+    const float kNear = 0.15f;
+
+    auto drawLine = [&](const float* wa, const float* wb, ImU32 color, float thickness) {
+        float a[3], b[3];
+        toCam(wa, a);
+        toCam(wb, b);
+        if (a[0] < kNear && b[0] < kNear) return;
+        if (a[0] < kNear) {  // clip to the near plane
+            float t = (kNear - a[0]) / (b[0] - a[0]);
+            for (int k = 0; k < 3; ++k) a[k] += (b[k] - a[k]) * t;
+        } else if (b[0] < kNear) {
+            float t = (kNear - b[0]) / (a[0] - b[0]);
+            for (int k = 0; k < 3; ++k) b[k] += (a[k] - b[k]) * t;
+        }
+        draw->AddLine(toScreen(a), toScreen(b), color, thickness);
+    };
+    for (const auto& l : v->lines) drawLine(l.a, l.b, l.color, 2.0f);
+
+    // Soft ceilings: each triangle clipped to the near plane, then filled and outlined.
+    for (const auto& t : v->tris) {
+        float c[4][3];
+        int n = 0;
+        float in[3][3];
+        for (int m = 0; m < 3; ++m) toCam(t.v[m], in[m]);
+        float nearestDepth = std::max(in[0][0], std::max(in[1][0], in[2][0]));
+        if (nearestDepth < kNear) continue;
+        for (int m = 0; m < 3; ++m) {
+            const float* a = in[m];
+            const float* b = in[(m + 1) % 3];
+            if (a[0] >= kNear) { memcpy(c[n++], a, sizeof(float) * 3); }
+            if ((a[0] >= kNear) != (b[0] >= kNear)) {
+                float k = (kNear - a[0]) / (b[0] - a[0]);
+                for (int j = 0; j < 3; ++j) c[n][j] = a[j] + (b[j] - a[j]) * k;
+                ++n;
+            }
+        }
+        if (n < 3) continue;
+        ImVec2 pts[4];
+        for (int m = 0; m < n; ++m) pts[m] = toScreen(c[m]);
+        uint32_t rgb = t.color & 0x00FFFFFFu;
+        // Farther boundaries fade, so what's near stands out and the rest reads as distant.
+        float fade = 1.0f - 0.75f * std::min(t.dist / v->fadeRange, 1.0f);
+        draw->AddConvexPolyFilled(pts, n, rgb | ((uint32_t)(v->opacity * fade * 255.0f) << 24));
+        if (t.outline) draw->AddPolyline(pts, n, rgb | ((uint32_t)(150.0f * fade) << 24), ImDrawFlags_Closed, 1.5f);
+    }
+
+    // The nearest boundary point: a ring there with its distance (a number beats guessing depth from the tint).
+    if (v->nearest.valid) {
+        float c[3];
+        toCam(v->nearest.p, c);
+        if (c[0] >= kNear) {
+            ImVec2 at = toScreen(c);
+            float px = size.y / 1080.0f;
+            draw->AddCircle(at, 7.0f * px, IM_COL32(255, 255, 255, 230), 16, 2.0f);
+            char text[32];
+            snprintf(text, sizeof(text), "%.1f", v->nearest.dist);
+            ImVec2 ext = ImGui::CalcTextSize(text);
+            draw->AddRectFilled(ImVec2(at.x + 10 * px, at.y - ext.y * 0.5f - 2), ImVec2(at.x + 10 * px + ext.x + 8, at.y + ext.y * 0.5f + 2),
+                                IM_COL32(0, 0, 0, 160), 3.0f);
+            draw->AddText(ImVec2(at.x + 10 * px + 4, at.y - ext.y * 0.5f), IM_COL32(255, 255, 255, 240), text);
+        }
+    }
+}
+
 static void DrawHud(const Games::Status& s) {
     auto* draw = ImGui::GetForegroundDrawList();
     DrawDot(s, draw);
+    DrawBoundaries(s, ImGui::GetBackgroundDrawList());  // behind the menu window
     if (g_menu.showBanner && GetTickCount64() - g_startTime < kBannerMs) {
         std::string banner = "Halo Mod Menu loaded - " + Menu::Describe(g_menu.openPad) + " or " +
                              Menu::Describe(g_menu.openKey) + " to open";
@@ -1487,6 +1788,58 @@ static void DrawHud(const Games::Status& s) {
         draw->AddRectFilled(ImVec2(pos.x - 12, pos.y - 6), ImVec2(pos.x + extent.x + 12, pos.y + extent.y + 6),
                             IM_COL32(0, 0, 0, alpha * 160 / 255), 6.0f);
         draw->AddText(font, size, pos, IM_COL32(255, 210, 80, alpha), g_toast.c_str());
+    }
+    if (g_armed) {
+        // Bottom left: the selected action with the one before and after it.
+        std::vector<const Streak*> list = ActiveStreaks(s.title);
+        int n = (int)list.size();
+        ImFont* font = ImGui::GetFont();
+        ImVec2 display = ImGui::GetIO().DisplaySize;
+        float scale = display.y / 1080.0f;
+        float textSize = ImGui::GetFontSize() * 1.4f;
+        const ImU32 gold = IM_COL32(255, 210, 80, 255), dim = IM_COL32(210, 210, 210, 120);
+        const float pad = 10.0f * scale, smallPx = 30.0f * scale, bigPx = 52.0f * scale, gap = 5.0f * scale;
+        float x = display.x * 0.02f, bottom = display.y * 0.78f;
+
+        if (!n) {
+            std::string text = "KILLSTREAKS: none pinned (pin them in the menu)";
+            ImVec2 extent = font->CalcTextSizeA(textSize, FLT_MAX, 0.0f, text.c_str());
+            draw->AddRectFilled(ImVec2(x - pad, bottom - extent.y - pad), ImVec2(x + extent.x + pad, bottom + pad),
+                                IM_COL32(0, 0, 0, 150), 6.0f);
+            draw->AddText(font, textSize, ImVec2(x, bottom - extent.y), IM_COL32(120, 220, 255, 255), text.c_str());
+        } else {
+            // The selected entry in the middle, with entries before and after it (wrapping).
+            int sel = g_streakSel >= 0 && g_streakSel < n ? g_streakSel : 0;
+            int shown = std::min(n, g_menu.streakRows);
+            int above = (shown - 1) / 2, below = shown - 1 - above;
+            float header = textSize * 1.3f;
+            float height = header + bigPx + (shown - 1) * smallPx + shown * gap;
+            float top = bottom - height;
+
+            const Streak* cur = list[sel];
+            std::string name = cur->label;
+            float width = bigPx + pad + font->CalcTextSizeA(textSize, FLT_MAX, 0.0f, name.c_str()).x;
+            width = std::max(width, font->CalcTextSizeA(textSize * 0.8f, FLT_MAX, 0.0f, "KILLSTREAKS").x);
+            draw->AddRectFilled(ImVec2(x - pad, top - pad), ImVec2(x + width + pad, bottom + pad), IM_COL32(0, 0, 0, 150), 6.0f);
+            draw->AddText(font, textSize * 0.8f, ImVec2(x, top), IM_COL32(120, 220, 255, 255), "KILLSTREAKS");
+
+            // An icon, or the name when the action has none (or the icon font didn't load).
+            auto entry = [&](const Streak* st, bool selected, float y) {
+                float size = selected ? bigPx : smallPx;
+                ImFont* iconFont = selected ? g_iconLarge : g_iconSmall;
+                const char* icon = iconFont ? IconUtf8(st->id) : nullptr;
+                float left = x + (bigPx - size) * 0.5f;  // smallPx icons sit centred over the selected one
+                if (icon) draw->AddText(iconFont, size, ImVec2(left, y), selected ? gold : dim, icon);
+                else if (!selected) draw->AddText(font, textSize * 0.8f, ImVec2(left, y), dim, st->label);
+                if (selected) draw->AddText(font, textSize, ImVec2(x + bigPx + pad, y + (bigPx - textSize) * 0.5f), gold, st->label);
+            };
+            float y = top + header;
+            for (int k = -above; k <= below; ++k) {
+                bool selected = k == 0;
+                entry(list[((sel + k) % n + n) % n], selected, y);
+                y += (selected ? bigPx : smallPx) + gap;
+            }
+        }
     }
     if (!s.supported || !g_menu.showHud) return;
 
@@ -1635,6 +1988,8 @@ static HRESULT __stdcall PresentDetour(IDXGISwapChain* swapChain, UINT syncInter
     // Tick when the running game changes.
     SettingsFile::SwitchGame(Games::RunningTitle(), g_settings);
     Games::Status status = Games::Tick(g_settings, ReadFrameInput());
+    g_features[0] = status.features;
+    g_features[1] = status.features2;
     UpdateMenuInput(status.supported && status.inGame, !MCC::GetRunning().inGame, status.title);
     Coop::Sync();
 

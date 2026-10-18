@@ -193,7 +193,7 @@ void Games::Reach::Unload() {
 }
 
 uint64_t Games::Reach::Features2() const {
-    return kDoubleJump | kAiScale | kRandomSwap | kDot | kFov | kGrenadeDrop | kExplosionSize;
+    return kDoubleJump | kAiScale | kRandomSwap | kDot | kFov | kGrenadeDrop | kExplosionSize | kBoundaryView;
 }
 
 uint64_t Games::Reach::Features() const {

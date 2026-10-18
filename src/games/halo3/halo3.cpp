@@ -75,7 +75,9 @@ static BarrelFireFn g_origBarrelFire = nullptr;
 static void __fastcall BarrelFireDetour(uint32_t weapon, int64_t barrel, void* c, int64_t d, int64_t e) {
     Fun::Shot shot;
     Halo3Cheats::BeforeShot(g_gameState, weapon, (int16_t)barrel, shot);
+    Halo3Cheats::ShotSpeed(true);
     g_origBarrelFire(weapon, barrel, c, d, e);
+    Halo3Cheats::ShotSpeed(false);
     Fun::AfterShot(shot);
 }
 
@@ -211,7 +213,7 @@ uint64_t Games::Halo3::Features() const {
 }
 
 uint64_t Games::Halo3::Features2() const {
-    return kAiScale | kRandomSwap | kDoubleJump | kDot;
+    return kAiScale | kRandomSwap | kDoubleJump | kDot | kBombingRun;
 }
 
 void Games::Halo3::Tick(const Settings& settings, const FrameInput&, Status& status) {

@@ -8,7 +8,7 @@ It's for **campaign only**. Multiplayer isn't supported, and you can't use this 
 
 **[Download the latest release](https://github.com/nrkorte/Halo-MCC-All-Campaign-Mod-Menu/releases/latest)**: open that page, then click `HaloModMenu-v….zip` under **Assets**.
 
-> **Important:** this mod only works with **MCC version 1.3528.0.0**. If MCC updates, the mod shows a warning and does nothing until it's updated for the new version. Technical details are further down, below the install guide.
+> **Note:** this mod was built with **MCC version 1.3528.0.0** and MAY need to be updated in the future. Most MCC updates (multiplayer, bug fixes) don't touch the campaigns, so it should keep working after them. If an update does change the game code the mod depends on, the mod shows a warning and turns itself off for that session until it's updated. Technical details are further down, below the install guide.
 
 ---
 
@@ -77,9 +77,9 @@ Or do it by hand: delete `version.dll` from the `win64` folder, and `HaloModMenu
 | Problem | Try this |
 |---|---|
 | The menu doesn't open | Make sure you launched with **Anti-Cheat Disabled**. The menu opens on MCC's own screens too, but it only shows the co-op settings there; start a mission to get the full menu. |
-| A warning says the version isn't supported | MCC has updated past 1.3528.0.0. The mod needs an update; check the Releases page. |
+| A warning says the game code changed | An MCC update moved something the mod relies on (it was built with 1.3528.0.0). The mod needs an update; check the Releases page. |
 | `version.dll` keeps disappearing | Defender is deleting it. Redo Step 2, then restore it from Protection history or copy it again. |
-| It worked, then stopped after a Steam update | Same as the version warning above. |
+| It worked, then stopped after a Steam update | Same as the warning above. Some features can also break individually if an update changed one title's code; check `HaloModMenu.log`. |
 | Something else | Open an issue on GitHub and attach `HaloModMenu.log` from the `win64` folder. |
 
 ---

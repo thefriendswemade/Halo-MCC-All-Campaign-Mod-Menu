@@ -62,6 +62,10 @@ char* ReachTags::BlockElement(char* tag, int blockOffset, int elementSize, int i
     return elements ? elements + (int64_t)elementSize * index : nullptr;
 }
 
+char* ReachTags::BlockData(char* tag, int blockOffset) {
+    return tag ? Resolve(*(uint32_t*)(tag + blockOffset + 4)) : nullptr;
+}
+
 namespace {
     uint32_t U32(const std::vector<char>& buf, size_t offset) { return *(const uint32_t*)(buf.data() + offset); }
 

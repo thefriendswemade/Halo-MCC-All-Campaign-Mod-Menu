@@ -65,6 +65,16 @@ namespace ReachCheats {
     };
     void BeforeShot(void** gameState, uint32_t weapon, int16_t barrel, Shot& shot);
     void AfterShot(const Shot& shot);
+    // Boundary view (boundary_view.cpp). The observer's drawn camera; false if unreadable.
+    bool ReadObserver(void** state, float* pos, float* fwd, float* up, float* tanHalfV);
+    // Render thread: the camera, the kill volumes (killCount = the scenario's count before the mod zeroed
+    // it) and the soft ceilings.
+    // Game thread, every tick: ray-tests the pieces BoundaryFill asked about (is the world between the camera and
+    // the piece?) so it can hide the ones behind walls and objects.
+    void BoundaryOcclusion(void** state, const Games::Settings& settings, uint32_t unitDatum, uint32_t vehicle);
+    void BoundaryFill(void** state, char* scnr, int killCount, const Games::Settings& settings,
+                      Games::BoundaryView& view);
+
     // Explosion acceleration: the factor the damage-acceleration hook applies (1 = off). Any thread.
     float ExplosionScale();
     // Recoil pushes queued by shots since the last call (applied by the

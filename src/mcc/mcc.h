@@ -19,6 +19,10 @@ namespace MCC {
     // every controller idle. Used by the menu when it's open on MCC's menu screens.
     void SetControllerBlocked(bool blocked);
 
+    // XINPUT_GAMEPAD_DPAD_* bits MCC's own controller reads see as released
+    // (killstreak mode: the mod reads them itself through ReadController).
+    void SetDpadMask(WORD buttons);
+
     // The title being played, as MCC reports it.
     struct Running {
         bool inGame = false;  // false in MCC's menus

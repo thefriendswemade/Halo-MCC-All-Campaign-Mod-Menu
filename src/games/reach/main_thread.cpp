@@ -2985,6 +2985,10 @@ namespace {
             g_teleportSerial = s.teleportSerial;
             if (s.teleportEnabled) Guard("Reach teleport", [&] { Teleport(state, p, objects); });
         }
+        Guard("Reach boundary occlusion", [&] {
+            if (p.count > 0)
+                BoundaryOcclusion(state, s, p.datums[0], Field<uint32_t>(p.units[0], REACH_OBJECT_PARENT));
+        });
         Guard("Reach air jump", [&] { AirJump(p, objects, s, in); });
         Guard("Reach AI size", [&] { ScaleAi(state, p, objects, s.aiScaleEnemy, s.aiScaleFriendly); });
         Guard("Reach rain", [&] { Rain(state, p, objects, s, dt); });

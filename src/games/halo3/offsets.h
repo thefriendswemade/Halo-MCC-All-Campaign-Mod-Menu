@@ -428,6 +428,7 @@
 // matg (game globals tag)
 #define HALO3_MATG_GRENADES           0x41C  // block, element 0x34; +0x0 int16 maximum count
 #define HALO3_MATG_GRENADE_DEF_SIZE   0x34
+#define HALO3_MATG_GRENADE_PROJECTILE 0x24  // tag reference in each grenade definition
 #define HALO3_MATG_PLAYER_INFORMATION 0x434  // block; +0x0 walk, +0x4 run fwd, +0x8 back, +0xC side, +0x10 accel
 #define HALO3_MATG_PLAYER_INFO_SIZE   0xC0
 
@@ -486,6 +487,8 @@
 
 #define HALO3_TAG_WEAP 0x77656170  // 'weap'
 #define HALO3_TAG_PROJ 0x70726F6A  // 'proj'
+#define HALO3_PROJ_INITIAL_VELOCITY   0x23C  // float; 0 on the thrown grenades (the throw code supplies their speed)
+#define HALO3_PROJ_FINAL_VELOCITY     0x240  // float
 #define HALO3_TAG_MATG 0x6D617467  // 'matg'
 #define HALO3_TAG_SCNR 0x73636E72  // 'scnr' (RVA 0xA6BEE)
 #define HALO3_TAG_CHAR 0x63686172  // 'char'

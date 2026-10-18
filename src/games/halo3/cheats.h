@@ -26,6 +26,10 @@ namespace Halo3Cheats {
     // through (after moving the player) and the fault is ignored.
     void InputThread(void** gameState, const Games::Settings& settings, const Games::FrameInput& input);
 
+    // Barrel-fire hook, around each shot: gives the chosen ammo type's zero-speed
+    // projectile (a grenade) a muzzle speed for the shot only.
+    void ShotSpeed(bool on);
+
     // Barrel-fire hook, around each shot: the chaos gun and recoil push
     // (games/fun.h), for the players' weapons and their vehicles' guns.
     void BeforeShot(void** gameState, uint32_t weapon, int16_t barrel, Fun::Shot& shot);

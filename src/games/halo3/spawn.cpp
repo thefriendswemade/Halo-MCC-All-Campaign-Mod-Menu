@@ -963,6 +963,10 @@ void Halo3Internal::Toast(const char* text) { SpawnResult(text); }
 
 void Halo3Internal::DeleteObject(uint32_t object) { Engine<ObjectDeleteFn>(OFFSET_HALO3_OBJECT_DELETE)(object); }
 
+uint32_t Halo3Internal::NewObject(uint32_t tag, const float* position, float yaw) {
+    return ::NewObject(tag, 0, position, yaw);
+}
+
 bool Halo3Internal::TeamsFriends(void** state, int a, int b) {
     if (a == b) return true;
     if (a < 0 || b < 0 || a >= HALO3_TEAM_COUNT || b >= HALO3_TEAM_COUNT) return false;

@@ -18,7 +18,9 @@ namespace Games {
         kFov        = 1ull << 6,  // Player page: field of view slider
         kGrenadeDrop = 1ull << 7,  // Chaos page: "We all feel down sometimes", a grenade under every AI
         kExplosionSize = 1ull << 9,  // Weapons page: explosion size slider
+        kBombingRun = 1ull << 10,  // Chaos page: flying vehicles fly over side by side dropping grenades
         kDot        = 1ull << 4,  // Player page: a permanent reticle dot (offset to the shot in third person)
+        kBoundaryView = 1ull << 11,  // World page: draw the invisible boundaries (kill volumes, soft ceilings)
     };
 
     // Cheats a title can support. The menu shows every one and greys out
@@ -107,6 +109,12 @@ namespace Games {
         bool fly = false;
         bool noclip = false;
         bool noBoundaries = false;
+        bool showBoundaries = false;     // draw kill volumes as wireframes
+        bool showSoftCeilings = false;   // draw soft ceilings (invisible walls and ceilings) as tinted triangles
+        bool softCeilingsAll = false;    // ... including the ones that don't affect you (or are removed)
+        bool boundaryHide = true;        // hide boundaries behind walls and objects (a ray test per piece, see Reach boundary_view.cpp)
+        float boundaryOpacity = 0.2f;    // fill opacity of the tinted boundaries
+        float boundaryRange = 10.0f;     // only boundaries this near the camera (world units); 0 = all
         bool aimbot = false;
         bool aiBlind = false;       // enemies can't see you
         bool aiCantShoot = false;
@@ -121,6 +129,9 @@ namespace Games {
         uint32_t grenadeSerial = 0;      // bumped by "Drop a grenade under every AI"
         bool grenadeEnemiesOnly = false; // ... only the ones that aren't on your side
         bool grenadeAuto = false;        // ... and under each new AI as it appears
+        uint32_t bombingRunSerial = 0;   // bumped by "Call in a bombing run"
+        int bombingRunCount = 4;         // aircraft flying abreast
+        int bombingRunType = 0;          // 0 marines (frag), 1 covenant (plasma), 2 brutes (spike), 3 white phosphorus (firebomb)
         float explosionScale = 1.0f; // explosion size (blast radius) multiplier; 1 = the game's own
         bool infiniteSprint = false; // Halo 4: sprint has no time limit
         bool dot = false;            // permanent reticle dot, drawn by the mod
@@ -242,6 +253,21 @@ namespace Games {
         uint32_t jumpPresses = 0;    // counts every new press, so a tap between two ticks isn't missed
     };
 
+    // Boundary view: what a title hands the overlay to draw in world space.
+    // Rebuilt by the title every frame it's on; valid until the next Tick.
+    struct BoundaryView {
+        struct Line { float a[3], b[3]; uint32_t color; };  // color: 0xAABBGGRR as ImGui packs it
+        struct Tri { float v[3][3]; uint32_t color; bool outline; float dist; };  // dist: nearest point to the camera   // filled (opacity from the settings); color as for Line
+        bool valid = false;          // camera below is real
+        float pos[3] = {}, fwd[3] = {}, up[3] = {};
+        float tanHalfV = 0.5f;       // tan(half the vertical field of view)
+        float opacity = 0.2f;        // fill alpha, 0-1
+        float fadeRange = 120.0f;    // fills fade out toward this distance
+        struct { bool valid = false; float p[3] = {}; float dist = 0; } nearest;  // the closest boundary point to the camera
+        std::vector<Line> lines;
+        std::vector<Tri> tris;
+    };
+
     // What the menu shows about the running title.
     // A checkpoint kept in the history (this mission).
     struct CheckpointEntry {
@@ -283,6 +309,7 @@ namespace Games {
         bool upgradeAlliesApplicable = true;
         // Field of view slider (Feature2::kFov): the title's range and its own default, in degrees.
         float fovMin = 0.0f, fovMax = 0.0f, fovDefault = 0.0f;
+        const BoundaryView* boundaryView = nullptr;  // nullptr = nothing to draw
     };
 
     // One MCC title. Subclass it to add support; the base class is a title

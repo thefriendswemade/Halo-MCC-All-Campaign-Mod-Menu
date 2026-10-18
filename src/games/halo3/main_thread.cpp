@@ -526,6 +526,7 @@ namespace {
         Halo3Extras::Tick(state, s, p, objects);
         Halo3Checkpoints::Tick(state, s, p, objects);
         Halo3Fun::Tick(state, s, in, p, objects);
+        Halo3Bombing::Tick(state, s, p, objects);
         Halo3Equipment::Tick(state, s, p, objects);
         Halo3Upgrade::Tick(state, s, p, objects);
         Halo3Vehicles::Tick(state, s, in, p, objects);

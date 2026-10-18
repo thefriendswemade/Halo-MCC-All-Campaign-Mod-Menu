@@ -4,6 +4,9 @@
 // every game update. Taken from AlphaRing (lib/game/inc/1.3528.0.0 and
 // src/mcc/mcc.cpp), which is known to work on this version.
 
+// The version the offsets were found on. It's only logged: the mod doesn't
+// refuse other versions, it checks the exe's code at the hooked functions
+// instead (see main.cpp), so small updates that don't move them keep working.
 #define SUPPORTED_MCC_VERSION L"1.3528.0.0"
 
 // Loads/unloads a title's engine DLL (halo1.dll, halo3.dll, ...).

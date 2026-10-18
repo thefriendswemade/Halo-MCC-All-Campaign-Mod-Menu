@@ -45,6 +45,9 @@ namespace Halo3Internal {
     // Deletes an object (object_delete's core).
     void DeleteObject(uint32_t object);
 
+    // Makes an object (or projectile) from a tag at a position, facing `yaw`; -1 if the game won't.
+    uint32_t NewObject(uint32_t tag, const float* position, float yaw);
+
     // True if team `a` isn't hostile to team `b` right now (the game's allegiance
     // table, so it follows "Your team"; campaign only). A team counts as its own friend.
     bool TeamsFriends(void** state, int teamA, int teamB);
@@ -66,6 +69,11 @@ namespace Halo3Internal {
 // Work items built on the above. Each is called from the wiring in cheats.cpp /
 // main_thread.cpp; all of them must be safe to call every tick/frame with
 // nothing enabled.
+namespace Halo3Bombing {  // bombing_run.cpp: the Chaos page's bombing run
+    void Reset();  // map gone: forget the run (its aircraft went with the map)
+    void Tick(void** state, const Games::Settings& s, const Halo3Cheats::Players& p, Blam::DataArray* objects);
+}
+
 namespace Halo3Teams {  // teams.cpp: Nuke, Despawn custom AI, Random AI teams, Your team, no betrayal
     void Load(char* module);
     void Unload();

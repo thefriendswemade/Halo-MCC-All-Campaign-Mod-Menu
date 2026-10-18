@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include "MinHook.h"
 
@@ -33,16 +34,48 @@ static bool GetModuleVersion(HMODULE module, wchar_t* out, size_t outLen) {
     return false;
 }
 
+// First bytes of the exe functions we hook or call, as of 1.3528.0.0 (bytes
+// that hold relative addresses are left out). If an update moved any of them,
+// the offsets are stale and hooking would crash the game.
+struct ExeSignature {
+    const char* name;
+    DWORD rva;
+    BYTE bytes[16];
+    size_t length;
+};
+
+static const ExeSignature kExeSignatures[] = {
+    {"module load",   OFFSET_MCC_MODULE_LOAD,    {0x4D, 0x85, 0xC0, 0x0F, 0x84}, 5},
+    {"module unload", OFFSET_MCC_MODULE_UNLOAD,  {0x40, 0x53, 0x48, 0x83, 0xEC, 0x50, 0x0F, 0x29, 0x74, 0x24, 0x40, 0x48, 0x8B, 0x05}, 14},
+    {"delta time",    OFFSET_MCC_DELTA_TIME,     {0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xD9, 0xE8}, 10},
+    {"xuid lookup",   OFFSET_MCC_GET_INDEX_BY_XUID, {0x48, 0x8B, 0xC4, 0x55, 0x57, 0x41, 0x54, 0x41, 0x56, 0x41, 0x57, 0x48, 0x8B, 0xEC, 0x48, 0x83}, 16},
+};
+
+static bool ExeMatchesOffsets() {
+    auto exe = (const BYTE*)GetModuleHandleW(nullptr);
+    for (const ExeSignature& sig : kExeSignatures) {
+        if (memcmp(exe + sig.rva, sig.bytes, sig.length) != 0) {
+            LOG("Exe code at %s (RVA 0x%X) doesn't match what the offsets expect", sig.name, sig.rva);
+            return false;
+        }
+    }
+    return true;
+}
+
 static DWORD WINAPI InitThread(LPVOID) {
     wchar_t version[32] = L"unknown";
     GetModuleVersion(GetModuleHandleW(nullptr), version, _countof(version));
-    LOG("HaloModMenu starting. MCC version %ls (supported: %ls)", version, SUPPORTED_MCC_VERSION);
+    LOG("HaloModMenu starting. MCC version %ls (built for: %ls)", version, SUPPORTED_MCC_VERSION);
 
-    if (wcscmp(version, SUPPORTED_MCC_VERSION) != 0) {
-        LOG("Version mismatch; mod disabled. Offsets need updating for this game version.");
+    if (wcscmp(version, SUPPORTED_MCC_VERSION) != 0)
+        LOG("MCC version differs from the one this mod was built for; checking whether the offsets still line up");
+
+    if (!ExeMatchesOffsets()) {
+        LOG("MCC's code has moved since this mod was built; mod disabled. Offsets need updating.");
         MessageBoxW(nullptr,
-                    L"HaloModMenu was built for MCC " SUPPORTED_MCC_VERSION L" and this game is a different "
-                    L"version.\n\nThe mod is disabled for this session so it can't crash the game.",
+                    L"HaloModMenu was built for MCC " SUPPORTED_MCC_VERSION L", and this MCC update changed the "
+                    L"game code the mod depends on.\n\nThe mod is disabled for this session so it can't crash "
+                    L"the game. It needs to be updated; check the Releases page.",
                     L"HaloModMenu", MB_OK | MB_ICONWARNING);
         return 0;
     }

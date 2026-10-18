@@ -31,6 +31,7 @@ static GetKeyStateFn g_origGetKeyState = nullptr;
 
 static std::atomic<bool> g_inputBlocked{false};
 static std::atomic<bool> g_controllerBlocked{false};
+static std::atomic<WORD> g_dpadMask{0};
 using XInputGetStateFn = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
 static XInputGetStateFn g_origXInputGetState = nullptr;  // trampoline once hooked
 static XInputGetStateFn g_xinputExport = nullptr;        // the DLL's own function
@@ -56,8 +57,11 @@ static bool __fastcall GetKeyStateDetour(void* self, DWORD index, void* input) {
 static DWORD WINAPI XInputGetStateDetour(DWORD user, XINPUT_STATE* state) {
     DWORD result = g_origXInputGetState(user, state);
     if (g_controllerBlocked && result == ERROR_SUCCESS && state) memset(&state->Gamepad, 0, sizeof(state->Gamepad));
+    else if (result == ERROR_SUCCESS && state) state->Gamepad.wButtons &= ~g_dpadMask.load();
     return result;
 }
+
+void MCC::SetDpadMask(WORD buttons) { g_dpadMask = buttons; }
 
 static XInputGetStateFn FindXInput() {
     const wchar_t* dlls[] = {L"xinput1_3.dll", L"xinput1_4.dll", L"xinput9_1_0.dll"};

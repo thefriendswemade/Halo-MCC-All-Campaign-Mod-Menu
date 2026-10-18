@@ -90,6 +90,9 @@ namespace {
     AimbotTag g_aimbot[kMaxAimbotTags];
 
     Restorable<uint32_t> g_ammo[kMaxAmmoBarrels];  // barrel projectile datums
+    Restorable<float> g_ammoSpeedInitial, g_ammoSpeedFinal;  // muzzle speed given to projectiles that have none (grenades)
+    uint32_t g_ammoShotProjectile = 0xFFFFFFFF;  // projectile the held weapon's barrels were pointed at
+    constexpr float kGrenadeMuzzleSpeed = 30.0f;  // world units per second, so a grenade fired from a barrel flies forward
 
 
     ::Patch::Nop g_aiCantFire;
@@ -483,6 +486,11 @@ namespace {
         char* weapon = p.count > 0 && projectile != 0xFFFFFFFF && InList(g_projectiles, projectile)
                            ? HeldWeapon(p.units[0], objects) : nullptr;
         char* tag = weapon ? Halo3Tags::Get(Field<uint32_t>(weapon, HALO3_OBJECT_TAG_DATUM)) : nullptr;
+
+        // The chosen projectile gets a muzzle speed only around barrel shots (ShotSpeed), so the
+        // player's own grenade throws, which read the same tag, are left alone.
+        g_ammoShotProjectile = weapon ? projectile : 0xFFFFFFFF;
+
         int barrels = Halo3Tags::BlockCount(tag, HALO3_WEAP_BARRELS);
         for (int b = 0; b < barrels && wantedCount < kMaxAmmoBarrels; ++b) {
             char* barrel = Halo3Tags::BlockElement(tag, HALO3_WEAP_BARRELS, HALO3_WEAP_BARREL_SIZE, b);
@@ -532,6 +540,7 @@ namespace {
         Halo3Extras::Reset();
         Halo3Checkpoints::Reset();
         Halo3Fun::Reset();
+        Halo3Bombing::Reset();
         Halo3Equipment::Reset();
         Halo3Vehicles::Reset();
         Halo3Upgrade::Reset();
@@ -699,6 +708,9 @@ void Halo3Cheats::Unload() {
     g_aiGrenades = {};
     for (auto& a : g_aimbot) a = {};
     for (auto& p : g_ammo) p = {};
+    g_ammoSpeedInitial = {};
+    g_ammoSpeedFinal = {};
+    g_ammoShotProjectile = 0xFFFFFFFF;
     g_listsScenario = nullptr;
     g_weapons.clear();
     g_projectiles.clear();
@@ -746,6 +758,26 @@ bool Halo3Cheats::Apply(void** gameState, const Games::Settings& settings, Games
 
 // The chaos gun and recoil push around one barrel's shot. Halo 3's barrel
 // fire runs after the objects update, once per barrel marked as fired.
+// Around a barrel shot: thrown grenades have no speed of their own (the throw code supplies it),
+// so a barrel firing one needs a muzzle speed. Given for the shot only, then taken back.
+void Halo3Cheats::ShotSpeed(bool on) {
+    __try {
+        if (!on) {
+            g_ammoSpeedInitial.Restore();
+            g_ammoSpeedFinal.Restore();
+            return;
+        }
+        char* proj = g_ammoShotProjectile != 0xFFFFFFFF ? Halo3Tags::Get(g_ammoShotProjectile) : nullptr;
+        if (!proj) return;
+        float* initial = &Field<float>(proj, HALO3_PROJ_INITIAL_VELOCITY);
+        float* final = &Field<float>(proj, HALO3_PROJ_FINAL_VELOCITY);
+        if (*initial != 0.0f || *final != 0.0f) return;
+        g_ammoSpeedInitial.Set(initial, kGrenadeMuzzleSpeed);
+        g_ammoSpeedFinal.Set(final, kGrenadeMuzzleSpeed);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
 void Halo3Cheats::BeforeShot(void** state, uint32_t weapon, int16_t barrel, Fun::Shot& shot) {
     if (!Fun::Active() || !state) return;
     __try {

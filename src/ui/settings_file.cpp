@@ -45,7 +45,7 @@ namespace {
         FLOAT_ENTRY(cameraDistance), FLOAT_ENTRY(aimbotStrength), FLOAT_ENTRY(damage), FLOAT_ENTRY(speed),
         FLOAT_ENTRY(jump), FLOAT_ENTRY(gravity), FLOAT_ENTRY(gameSpeed), FLOAT_ENTRY(vehicleSpeed),
         FLOAT_ENTRY(vehicleGrip),
-        U64_ENTRY(skulls), BOOL_ENTRY(chaosGun), BOOL_ENTRY(rain), INT_ENTRY(rainKind), FLOAT_ENTRY(rainInterval),
+        U64_ENTRY(skulls), BOOL_ENTRY(chaosGun), BOOL_ENTRY(rain), INT_ENTRY(rainKind), INT_ENTRY(bombingRunCount), INT_ENTRY(bombingRunType), FLOAT_ENTRY(rainInterval),
         FLOAT_ENTRY(rainMax), FLOAT_ENTRY(rainRadius), BOOL_ENTRY(recoilPush), FLOAT_ENTRY(recoilStrength), BOOL_ENTRY(teleportEnabled),
         BOOL_ENTRY(randomSwapAuto), BOOL_ENTRY(randomSwapAllies), BOOL_ENTRY(upgradeAiAuto), BOOL_ENTRY(upgradeAiAllies), FLOAT_ENTRY(upgradeAiRange),
         BOOL_ENTRY(randomTeamsAuto), BOOL_ENTRY(randomTeamsSpartans), FLOAT_ENTRY(randomTeamsFactions),
