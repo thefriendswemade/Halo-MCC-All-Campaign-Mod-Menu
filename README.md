@@ -90,17 +90,22 @@ Open the menu in a mission and pick a category. Every option can be switched off
 
 | Category | What's in it |
 |---|---|
-| **Player** | God mode, speed, jump height, flying and noclip (fly through walls), third person, no HUD, field of view, change which team you're on |
-| **Weapons** | Infinite ammo, infinite grenades, never reload, rapid fire, full-auto, no recoil, no spread, no overheating, aimbot, give yourself any weapon on the map |
+| **Player** | God mode, speed, jump height, flying and noclip (fly through walls), third person, no HUD, field of view, permanent reticle dot, teleport to where you're aiming, infinite sprint (Halo 4), change which team you're on |
+| **Weapons** | Infinite ammo, infinite grenades, never reload, rapid fire, full-auto, no recoil, no spread, no overheating, recoil push, aimbot, give yourself any weapon on the map |
 | **Combat** | One-hit kills, damage multiplier, friendly fire and betrayal options |
 | **Equipment** | Infinite equipment, equipment that doesn't expire, give yourself equipment (in games that have it) |
 | **AI** | Enemies that can't see, hear or shoot you, upgrade enemies, shuffle AI teams, nuke or despawn everything you spawned |
-| **World** | Gravity, slow motion or fast forward, remove invisible walls and kill zones, time stop, save and load checkpoints on demand |
+| **World** | Gravity, slow motion or fast forward, remove invisible walls and kill zones, show kill volumes and soft ceilings as a wireframe overlay (Reach), explosion size, time stop, save and load checkpoints on demand |
 | **Vehicles** | Faster vehicles, indestructible vehicles, rapid-fire vehicle guns, infinite boost, can't be hijacked, drive Pelicans and Phantoms |
 | **Spawning** | Spawn enemies, allies, squads, weapons and vehicles from the current map, where you're aiming |
-| **Fun / Chaos / Skulls** | Launch enemies when you hit them, giant and tiny enemies, double jump, poison touch, perfect camo and other joke options, plus skull toggles |
+| **Fun / Chaos / Skulls** | Launch enemies when you hit them, giant and tiny enemies, double jump, poison touch, perfect camo, make it rain, a grenade dropped under every AI, a bombing run (Halo 3) and other joke options, plus skull toggles |
 | **Co-op** | Splitscreen for 2 to 4 local players in any campaign, a controller each |
+| **Killstreaks** | Pin any option to a quick-action list, then use the D-pad in game: Down arms it, Left disarms (see below) |
 | **Menu Settings** | Menu colours, size, font and position, and button bindings |
+
+## Killstreaks
+
+Tick **Pin to killstreaks** on an option to add it to your quick-action list. Turn on **Killstreak mode**, then use the D-pad without opening the menu: D-pad Down arms the list and picks actions, D-pad Left disarms. While it's on, D-pad Down no longer reaches the game.
 
 ## Local co-op
 
@@ -114,7 +119,7 @@ Co-op is ported from [AlphaRing](https://github.com/WinterSquire/AlphaRing) by W
 |---|---|
 | Halo 3, Halo: Reach, Halo: CE, ODST, Halo 4 | Core cheats, vehicles and spawning confirmed working in game |
 | Halo 2 | Core cheats, vehicles and spawning confirmed; some newer Fun/Chaos features are still being tested |
-| Newer additions (FOV slider, explosion size, grenade drop, reticle dot) | Rolling out game by game |
+| Newer additions (FOV slider, explosion size, grenade drop, reticle dot, boundary view, bombing run) | Rolling out game by game; boundary view is Reach only and the bombing run is Halo 3 only, and both are still being tested |
 
 This is a hobby project that's still being worked on, so expect rough edges. Bug reports are welcome.
 
